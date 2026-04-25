@@ -9,12 +9,18 @@ on:
         type: string
     secrets:
       ORG_GH_TOKEN:
-        description: 'GitHub PAT'
-        required: false
+        description: 'GitHub PAT with repo permissions for updating Helm charts'
+        required: true
+      SMTP_USERNAME:
+        required: true
+      SMTP_PASSWORD:
+        required: true
+      SLACK_WEBHOOK:
+        required: true
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/vkpaints-${{ inputs.service_name }}
+  IMAGE_NAME: ${{ github.repository_owner }}/vkpaints_${{ inputs.service_name }}
 
 jobs:
   build-and-push-release:
@@ -40,7 +46,6 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # This automatically creates a tag based on the GitHub release tag (e.g., v1.0.0)
           tags: |
             type=semver,pattern={{version}}
 
@@ -51,3 +56,65 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Export Release Tag
+        id: export_tag
+        run: |
+          # Extract the tag (e.g., v1.0.0) from the github ref
+          echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+  update-helm:
+    name: Update Helm Chart (Prod & Dev Values)
+    needs: build-and-push-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Helm Chart Repo
+        uses: actions/checkout@v4
+        with:
+          repository: VK-Paints/vkpaints-helm-charts
+          token: ${{ secrets.ORG_GH_TOKEN }}
+          path: helm-repo
+
+      - name: Update values-prod.yaml and values-dev.yaml
+        run: |
+          cd helm-repo
+          RELEASE_TAG=${GITHUB_REF#refs/tags/}
+          
+          # Update PROD values
+          yq -i '.image.tag = "'$RELEASE_TAG'"' charts/${{ inputs.service_name }}/values-prod.yaml
+          
+          # Update DEV values (as requested)
+          yq -i '.image.tag = "'$RELEASE_TAG'"' charts/${{ inputs.service_name }}/values-dev.yaml
+          
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add charts/${{ inputs.service_name }}/values-prod.yaml charts/${{ inputs.service_name }}/values-dev.yaml
+          git commit -m "Release: Update ${{ inputs.service_name }} images to $RELEASE_TAG" || echo "No changes to commit"
+          git push
+
+  notify-result:
+    name: Send Notification
+    needs: [build-and-push-release, update-helm]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Workflow Repo
+        uses: actions/checkout@v4
+        with:
+          repository: VK-Paints/vkpaints-workflow
+
+      - name: Send Notification
+        uses: ./.github/actions/notify
+        with:
+          status: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 'failure' || 'success' }}
+          pipeline_name: 'Production Release Build & Deploy'
+          repository_name: ${{ github.repository }}
+          reason_or_message: 'Release Image Pushed and Helm Charts Updated'
+          author: ${{ github.actor }}
+          smtp_username: ${{ secrets.SMTP_USERNAME }}
+          smtp_password: ${{ secrets.SMTP_PASSWORD }}
+          mail_from: 'actions@vkpaints.com'
+          mail_to: ${{ github.actor }}@users.noreply.github.com
+          slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
+          workflow_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+          report_url: '${{ github.server_url }}/${{ github.repository }}/releases'
