@@ -48,6 +48,12 @@ runs:
           echo "SUBJECT=[CI ALERT] ${{ inputs.pipeline_name }} FAILED - ${{ inputs.repository_name }}" >> $GITHUB_ENV
         fi
 
+    - name: Debug Secret Connectivity
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.slack_webhook }}" ]; then echo "DEBUG: Slack Webhook is MISSING"; else echo "DEBUG: Slack Webhook is present"; fi
+        if [ -z "${{ inputs.smtp_password }}" ]; then echo "DEBUG: SMTP Password is MISSING"; else echo "DEBUG: SMTP Password is present"; fi
+
     - name: Send email
       uses: hilarion5/send-mail@v1
       continue-on-error: true
@@ -74,7 +80,7 @@ runs:
           </div>
 
     - name: Post to Slack
-      uses: slackapi/slack-github-action@v3.0.1
+      uses: slackapi/slack-github-action@v2.0.0
       with:
         webhook: ${{ inputs.slack_webhook }}
         webhook-type: incoming-webhook
