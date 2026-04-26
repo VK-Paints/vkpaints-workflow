@@ -85,34 +85,20 @@ runs:
         webhook: ${{ inputs.slack_webhook }}
         webhook-type: incoming-webhook
         payload: |
-          attachments:
-            - color: "${{ env.COLOR }}"
-              blocks:
-                - type: header
-                  text:
-                    type: plain_text
-                    text: "${{ env.TITLE }}"
-                - type: section
-                  fields:
-                    - type: mrkdwn
-                      text: "*Pipeline*\n${{ inputs.pipeline_name }}"
-                    - type: mrkdwn
-                      text: "*Repository*\n${{ inputs.repository_name }}"
-                - type: section
-                  fields:
-                    - type: mrkdwn
-                      text: "*Author*\n${{ inputs.author }}"
-                    - type: mrkdwn
-                      text: "*Details*\n${{ inputs.reason_or_message }}"
-                - type: actions
-                  elements:
-                    - type: button
-                      text:
-                        type: plain_text
-                        text: "View Report"
-                      url: "${{ inputs.report_url }}"
-                    - type: button
-                      text:
-                        type: plain_text
-                        text: "View Workflow"
-                      url: "${{ inputs.workflow_url }}"
+          {
+            "text": "${{ env.TITLE }}: ${{ inputs.pipeline_name }} for ${{ inputs.repository_name }}",
+            "attachments": [
+              {
+                "color": "${{ env.COLOR }}",
+                "blocks": [
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "*${{ env.TITLE }}*\n*Repo:* ${{ inputs.repository_name }}\n*Details:* ${{ inputs.reason_or_message }}\n<${{ inputs.workflow_url }}|View Workflow>"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
