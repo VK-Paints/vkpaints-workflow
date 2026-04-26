@@ -38,6 +38,7 @@ jobs:
           args: >
             -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.host.url=${{ vars.SONAR_HOST_URL }}
 
   snyk-scan:
     name: Snyk Vulnerability Scan
