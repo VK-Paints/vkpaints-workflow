@@ -1,4 +1,4 @@
-name: 🚀 VK-Paints Unified Pipeline
+name: VK-Paints Reusable CI Test
 
 on:
   workflow_call:
@@ -29,7 +29,7 @@ on:
 
 jobs:
   quality-gates:
-    name: 🛡️ Quality Gates (Sonar & Snyk)
+    name: Quality Gates (Sonar and Snyk)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -48,6 +48,9 @@ jobs:
             -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
             -Dsonar.host.url=${{ vars.SONAR_HOST_URL }}
 
+      - name: Install Dependencies for Snyk
+        run: npm install
+
       - name: Snyk Vulnerability Scan
         uses: snyk/actions/node@master
         env:
@@ -56,7 +59,7 @@ jobs:
           args: --severity-threshold=high
 
   build-and-push:
-    name: 🏗️ Build & Push Image
+    name: Build and Push Image
     needs: quality-gates
     runs-on: ubuntu-latest
     steps:
@@ -83,7 +86,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   notify:
-    name: 🔔 Notify Result
+    name: Notify Result
     needs: [quality-gates, build-and-push]
     if: always()
     runs-on: ubuntu-latest
