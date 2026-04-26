@@ -62,6 +62,9 @@ jobs:
     name: Build and Push Image
     needs: quality-gates
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     outputs:
       has_vuln: ${{ steps.check_vuln.outputs.HAS_VULN }}
     steps:
