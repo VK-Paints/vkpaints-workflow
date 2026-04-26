@@ -124,6 +124,11 @@ jobs:
         with:
           repository: VK-Paints/vkpaints-workflow
 
+      - name: Get Author Email
+        id: author
+        shell: bash
+        run: echo "email=$(git log -1 --pretty=format:'%ae')" >> $GITHUB_OUTPUT
+
       - name: Send Notification
         uses: ./.github/actions/notify
         with:
@@ -132,10 +137,12 @@ jobs:
           repository_name: ${{ github.repository }}
           reason_or_message: 'Results: Build/Scan [${{ needs.build-scan-push.result }}], Helm Update [${{ needs.update-helm.result }}]'
           author: ${{ github.actor }}
+          smtp_server: ${{ vars.SMTP_SERVER }}
+          smtp_port: ${{ vars.SMTP_PORT }}
           smtp_username: ${{ secrets.SMTP_USERNAME }}
           smtp_password: ${{ secrets.SMTP_PASSWORD }}
-          mail_from: 'actions@vkpaints.com'
-          mail_to: ${{ github.actor }}@users.noreply.github.com
+          mail_from: ${{ vars.MAIL_FROM }}
+          mail_to: ${{ steps.author.outputs.email }}
           slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
           workflow_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
           report_url: '${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}'

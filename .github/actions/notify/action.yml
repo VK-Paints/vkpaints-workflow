@@ -14,6 +14,10 @@ inputs:
     required: true
   author:
     required: true
+  smtp_server:
+    required: true
+  smtp_port:
+    required: true
   smtp_username:
     required: true
   smtp_password:
@@ -47,13 +51,20 @@ runs:
           echo "EMAIL_TITLE=Pipeline Failure" >> $GITHUB_ENV
           echo "SUBJECT=[CI ALERT] ${{ inputs.pipeline_name }} FAILED - ${{ inputs.repository_name }}" >> $GITHUB_ENV
         fi
+        
+        # Auto-detect if we need SSL based on port 465
+        if [ "${{ inputs.smtp_port }}" == "465" ]; then
+          echo "SMTP_SECURE=true" >> $GITHUB_ENV
+        else
+          echo "SMTP_SECURE=false" >> $GITHUB_ENV
+        fi
 
     - name: Send email
       uses: hilarion5/send-mail@v1
       with:
-        smtp-server: smtp.hostinger.com
-        smtp-port: 587
-        smtp-secure: false
+        smtp-server: ${{ inputs.smtp_server }}
+        smtp-port: ${{ inputs.smtp_port }}
+        smtp-secure: ${{ env.SMTP_SECURE }}
         username: ${{ inputs.smtp_username }}
         password: ${{ inputs.smtp_password }}
         from-email: "VK Paints CI <${{ inputs.mail_from }}>"
