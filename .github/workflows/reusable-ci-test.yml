@@ -59,6 +59,7 @@ jobs:
           args: --severity-threshold=high
 
       - name: Snyk Monitor
+        if: always()
         uses: snyk/actions/node@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
