@@ -99,9 +99,17 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Determine Failure Reason
-        id: reason
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine Failure Reason and Author
+        id: info
         run: |
+          # Get actual commit author email
+          echo "email=$(git log -1 --pretty=format:'%ae')" >> $GITHUB_OUTPUT
+
           if [ "${{ needs.build-and-push-release.result }}" == "failure" ]; then
             echo "msg=Production Image Build failed! Check the logs for compilation or Docker errors." >> $GITHUB_OUTPUT
             echo "url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_OUTPUT
@@ -126,14 +134,14 @@ jobs:
           status: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 'failure' || 'success' }}
           pipeline_name: 'Production Release Build & Deploy'
           repository_name: ${{ github.repository }}
-          reason_or_message: ${{ steps.reason.outputs.msg }}
+          reason_or_message: ${{ steps.info.outputs.msg }}
           author: ${{ github.actor }}
           smtp_username: ${{ secrets.SMTP_USERNAME }}
           smtp_password: ${{ secrets.SMTP_PASSWORD }}
           smtp_server: ${{ vars.SMTP_SERVER }}
           smtp_port: ${{ vars.SMTP_PORT }}
           mail_from: ${{ vars.MAIL_FROM }}
-          mail_to: ${{ github.actor }}@users.noreply.github.com
+          mail_to: ${{ steps.info.outputs.email }}
           slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
           workflow_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
-          report_url: ${{ steps.reason.outputs.url }}
+          report_url: ${{ steps.info.outputs.url }}
