@@ -152,13 +152,31 @@ jobs:
         shell: bash
         run: echo "email=$(git log -1 --pretty=format:'%ae')" >> $GITHUB_OUTPUT
 
+      - name: Set Notification Details
+        id: details
+        shell: bash
+        run: |
+          if [ "${{ needs.quality-gates.result }}" != "success" ]; then
+            echo "STATUS=failure" >> $GITHUB_OUTPUT
+            echo "MSG=Quality gates failed (SonarQube or Snyk). Please check the security reports." >> $GITHUB_OUTPUT
+          elif [ "${{ needs.build-and-push.result }}" != "success" ]; then
+            echo "STATUS=failure" >> $GITHUB_OUTPUT
+            echo "MSG=Docker Build or Push failed. Please check the workflow logs." >> $GITHUB_OUTPUT
+          elif [ "${{ needs.build-and-push.outputs.has_vuln }}" == "true" ]; then
+            echo "STATUS=success" >> $GITHUB_OUTPUT
+            echo "MSG=there are vulnerabilities detected in the image, solve them as soon as possible, since it is urgent we are processing the same image for testing purpose" >> $GITHUB_OUTPUT
+          else
+            echo "STATUS=success" >> $GITHUB_OUTPUT
+            echo "MSG=Pipeline completed successfully and image pushed to GHCR." >> $GITHUB_OUTPUT
+          fi
+
       - name: Send Notification
         uses: ./.github/actions/notify
         with:
-          status: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 'failure' || 'success' }}
+          status: ${{ steps.details.outputs.STATUS }}
           pipeline_name: "Prod Pipeline (Main)"
           repository_name: ${{ github.repository }}
-          reason_or_message: ${{ needs.build-and-push.outputs.has_vuln == 'true' && 'there are vulnerabilities detected in the image, solve them as soon as possible, since it is urgent we are processing the same image for testing purpose' || 'Pipeline completed successfully.' }}
+          reason_or_message: ${{ steps.details.outputs.MSG }}
           author: ${{ github.actor }}
           smtp_server: ${{ inputs.smtp_server }}
           smtp_port: ${{ inputs.smtp_port }}
