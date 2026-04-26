@@ -50,6 +50,7 @@ runs:
 
     - name: Send email
       uses: hilarion5/send-mail@v1
+      continue-on-error: true
       with:
         smtp-server: smtp.hostinger.com
         smtp-port: 465
