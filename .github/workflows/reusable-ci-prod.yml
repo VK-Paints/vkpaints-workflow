@@ -58,6 +58,13 @@ jobs:
         with:
           args: --severity-threshold=high
 
+      - name: Snyk Monitor
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: monitor
+
   build-and-push:
     name: Build and Push Image
     needs: quality-gates
