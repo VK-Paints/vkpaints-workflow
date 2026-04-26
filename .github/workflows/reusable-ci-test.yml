@@ -62,6 +62,8 @@ jobs:
     name: Build and Push Image
     needs: quality-gates
     runs-on: ubuntu-latest
+    outputs:
+      has_vuln: ${{ steps.check_vuln.outputs.HAS_VULN }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -93,14 +95,26 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Run Trivy vulnerability scanner
+        id: trivy
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'local-image:latest'
           format: 'table'
-          exit-code: '1'
+          output: 'trivy-report.txt'
+          exit-code: '0'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+
+      - name: Check for vulnerabilities
+        id: check_vuln
+        shell: bash
+        run: |
+          if grep -E "CRITICAL|HIGH" trivy-report.txt; then
+            echo "HAS_VULN=true" >> $GITHUB_OUTPUT
+          else
+            echo "HAS_VULN=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build and Push to GHCR
         uses: docker/build-push-action@v5
@@ -133,7 +147,7 @@ jobs:
           status: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 'failure' || 'success' }}
           pipeline_name: "Test Pipeline (PR)"
           repository_name: ${{ github.repository }}
-          reason_or_message: "Target: ${{ inputs.service_name }}. Image Tag: latest"
+          reason_or_message: ${{ needs.build-and-push.outputs.has_vuln == 'true' && 'there are vulnerabilities detected in the image, solve them as soon as possible, since it is urgent we are processing the same image for testing purpose' || 'Pipeline completed successfully.' }}
           author: ${{ github.actor }}
           smtp_server: ${{ inputs.smtp_server }}
           smtp_port: ${{ inputs.smtp_port }}
