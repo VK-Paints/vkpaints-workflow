@@ -120,6 +120,20 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Determine Failure Reason
+        id: reason
+        run: |
+          if [ "${{ needs.build-scan-push.result }}" == "failure" ]; then
+            echo "msg=Docker Build or Trivy Security Scan failed! Check for code errors or image vulnerabilities." >> $GITHUB_OUTPUT
+            echo "url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_OUTPUT
+          elif [ "${{ needs.update-helm.result }}" == "failure" ]; then
+            echo "msg=ArgoCD Helm update failed! Could not push the new image tag to the charts repository." >> $GITHUB_OUTPUT
+            echo "url=${{ github.server_url }}/VK-Paints/vkpaints-helm-charts" >> $GITHUB_OUTPUT
+          else
+            echo "msg=Dev Build and Deploy successful! Image pushed to GHCR and Helm chart updated." >> $GITHUB_OUTPUT
+            echo "url=${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Checkout Workflow Repo (for action access)
         uses: actions/checkout@v4
         with:
@@ -133,7 +147,7 @@ jobs:
           status: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 'failure' || 'success' }}
           pipeline_name: 'Dev Build, Scan, & Deploy'
           repository_name: ${{ github.repository }}
-          reason_or_message: 'Results: Build/Scan [${{ needs.build-scan-push.result }}], Helm Update [${{ needs.update-helm.result }}]'
+          reason_or_message: ${{ steps.reason.outputs.msg }}
           author: ${{ github.actor }}
           smtp_username: ${{ secrets.SMTP_USERNAME }}
           smtp_password: ${{ secrets.SMTP_PASSWORD }}
@@ -143,4 +157,4 @@ jobs:
           mail_to: ${{ github.actor }}@users.noreply.github.com
           slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
           workflow_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
-          report_url: '${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}'
+          report_url: ${{ steps.reason.outputs.url }}

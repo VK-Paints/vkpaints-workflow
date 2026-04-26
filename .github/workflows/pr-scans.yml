@@ -69,6 +69,23 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Determine Failure Reason
+        id: reason
+        run: |
+          if [ "${{ needs.sonar-scan.result }}" == "failure" ]; then
+            echo "msg=SonarQube Quality Gate failed! Review code smells or vulnerabilities." >> $GITHUB_OUTPUT
+            echo "url=${{ vars.SONAR_HOST_URL }}/dashboard?id=${{ vars.SONAR_PROJECT_KEY }}" >> $GITHUB_OUTPUT
+          elif [ "${{ needs.snyk-scan.result }}" == "failure" ]; then
+            echo "msg=Snyk Security Scan found high-severity vulnerabilities in dependencies." >> $GITHUB_OUTPUT
+            echo "url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_OUTPUT
+          elif [ "${{ contains(needs.*.result, 'failure') }} " == "true" ]; then
+            echo "msg=Pipeline failed during the scanning phase (possible secret or setup error)." >> $GITHUB_OUTPUT
+            echo "url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_OUTPUT
+          else
+            echo "msg=All scans passed! SonarQube and Snyk are green." >> $GITHUB_OUTPUT
+            echo "url=${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Checkout Workflow Repo (for action access)
         uses: actions/checkout@v4
         with:
@@ -82,7 +99,7 @@ jobs:
           status: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 'failure' || 'success' }}
           pipeline_name: 'PR Scans (Sonar & Snyk)'
           repository_name: ${{ github.repository }}
-          reason_or_message: 'Scan results: SonarQube [${{ needs.sonar-scan.result }}], Snyk [${{ needs.snyk-scan.result }}]'
+          reason_or_message: ${{ steps.reason.outputs.msg }}
           author: ${{ github.actor }}
           smtp_username: ${{ secrets.SMTP_USERNAME }}
           smtp_password: ${{ secrets.SMTP_PASSWORD }}
@@ -92,4 +109,4 @@ jobs:
           mail_to: ${{ github.actor }}@users.noreply.github.com
           slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
           workflow_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
-          report_url: '${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          report_url: ${{ steps.reason.outputs.url }}
