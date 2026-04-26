@@ -74,6 +74,7 @@ jobs:
         with:
           repository: VK-Paints/vkpaints-workflow
           token: ${{ secrets.ORG_GH_TOKEN }}
+          ref: main
 
       - name: Send Notification
         uses: ./.github/actions/notify

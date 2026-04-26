@@ -74,6 +74,7 @@ jobs:
           repository: VK-Paints/vkpaints-helm-charts
           token: ${{ secrets.ORG_GH_TOKEN }}
           path: helm-repo
+          ref: main
 
       - name: Update values-prod.yaml and values-dev.yaml
         run: |
@@ -103,6 +104,7 @@ jobs:
         with:
           repository: VK-Paints/vkpaints-workflow
           token: ${{ secrets.ORG_GH_TOKEN }}
+          ref: main
 
       - name: Send Notification
         uses: ./.github/actions/notify
