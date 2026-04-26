@@ -52,8 +52,8 @@ runs:
       uses: hilarion5/send-mail@v1
       with:
         smtp-server: smtp.hostinger.com
-        smtp-port: 587
-        smtp-secure: false
+        smtp-port: 465
+        smtp-secure: true
         username: ${{ inputs.smtp_username }}
         password: ${{ inputs.smtp_password }}
         from-email: "VK Paints CI <${{ inputs.mail_from }}>"
