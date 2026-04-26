@@ -1,0 +1,128 @@
+name: 🚀 VK-Paints Unified Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      service_name:
+        required: true
+        type: string
+      smtp_server:
+        required: true
+        type: string
+      smtp_port:
+        required: true
+        type: string
+      mail_from:
+        required: true
+        type: string
+    secrets:
+      SONAR_TOKEN:
+        required: true
+      SNYK_TOKEN:
+        required: true
+      SMTP_USERNAME:
+        required: true
+      SMTP_PASSWORD:
+        required: true
+      SLACK_WEBHOOK:
+        required: true
+
+jobs:
+  quality-gates:
+    name: 🛡️ Quality Gates (Sonar & Snyk)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.host.url=${{ vars.SONAR_HOST_URL }}
+
+      - name: Snyk Vulnerability Scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+  build-and-push:
+    name: 🏗️ Build & Push Image
+    needs: quality-gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine Tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "IMAGE_TAG=latest" >> $GITHUB_OUTPUT
+            echo "ENV_NAME=Development" >> $GITHUB_OUTPUT
+          else
+            echo "IMAGE_TAG=main" >> $GITHUB_OUTPUT
+            echo "ENV_NAME=Production" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/vkpaints-${{ inputs.service_name }}:${{ steps.tag.outputs.IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  notify:
+    name: 🔔 Notify Result
+    needs: [quality-gates, build-and-push]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Workflow Repo
+        uses: actions/checkout@v4
+        with:
+          repository: VK-Paints/vkpaints-workflow
+
+      - name: Get Author Email
+        id: author
+        shell: bash
+        run: echo "email=$(git log -1 --pretty=format:'%ae')" >> $GITHUB_OUTPUT
+
+      - name: Send Notification
+        uses: ./.github/actions/notify
+        with:
+          status: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 'failure' || 'success' }}
+          pipeline_name: "Unified Pipeline (${{ github.event_name }})"
+          repository_name: ${{ github.repository }}
+          reason_or_message: "Target: ${{ inputs.service_name }}. Image Tag: ${{ needs.build-and-push.outputs.IMAGE_TAG || 'N/A' }}"
+          author: ${{ github.actor }}
+          smtp_server: ${{ inputs.smtp_server }}
+          smtp_port: ${{ inputs.smtp_port }}
+          smtp_username: ${{ secrets.SMTP_USERNAME }}
+          smtp_password: ${{ secrets.SMTP_PASSWORD }}
+          mail_from: ${{ inputs.mail_from }}
+          mail_to: ${{ steps.author.outputs.email }}
+          slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
+          workflow_url: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          report_url: "${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}"
