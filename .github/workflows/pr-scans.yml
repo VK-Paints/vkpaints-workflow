@@ -7,6 +7,15 @@ on:
         description: 'Name of the microservice'
         required: true
         type: string
+      smtp_server:
+        required: true
+        type: string
+      smtp_port:
+        required: true
+        type: string
+      mail_from:
+        required: true
+        type: string
     secrets:
       SONAR_TOKEN:
         required: true
@@ -106,11 +115,11 @@ jobs:
           repository_name: ${{ github.repository }}
           reason_or_message: 'Results: Sonar [${{ needs.sonar-scan.result }}], Snyk [${{ needs.snyk-scan.result }}], Docker [${{ needs.docker-build-test.result }}]'
           author: ${{ github.actor }}
-          smtp_server: ${{ vars.SMTP_SERVER }}
-          smtp_port: ${{ vars.SMTP_PORT }}
+          smtp_server: ${{ inputs.smtp_server }}
+          smtp_port: ${{ inputs.smtp_port }}
           smtp_username: ${{ secrets.SMTP_USERNAME }}
           smtp_password: ${{ secrets.SMTP_PASSWORD }}
-          mail_from: ${{ vars.MAIL_FROM }}
+          mail_from: ${{ inputs.mail_from }}
           mail_to: ${{ steps.author.outputs.email }}
           slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
           workflow_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
