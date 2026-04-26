@@ -38,6 +38,7 @@ jobs:
         with:
           args: >
             -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
+            -Dsonar.token=${{ secrets.SONAR_TOKEN }}
 
   snyk-scan:
     name: Snyk Vulnerability Scan
