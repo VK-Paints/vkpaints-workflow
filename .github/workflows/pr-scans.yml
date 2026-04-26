@@ -86,6 +86,8 @@ jobs:
           author: ${{ github.actor }}
           smtp_username: ${{ secrets.SMTP_USERNAME }}
           smtp_password: ${{ secrets.SMTP_PASSWORD }}
+          smtp_server: ${{ vars.SMTP_SERVER }}
+          smtp_port: ${{ vars.SMTP_PORT }}
           mail_from: ${{ vars.MAIL_FROM }}
           mail_to: ${{ github.actor }}@users.noreply.github.com
           slack_webhook: ${{ secrets.SLACK_WEBHOOK }}

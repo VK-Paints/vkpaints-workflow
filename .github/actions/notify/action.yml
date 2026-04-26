@@ -14,6 +14,13 @@ inputs:
     required: true
   author:
     required: true
+  smtp_server:
+    required: true
+  smtp_port:
+    required: true
+  smtp_secure:
+    required: false
+    default: 'true'
   smtp_username:
     required: true
   smtp_password:
@@ -58,9 +65,9 @@ runs:
       uses: hilarion5/send-mail@v1
       continue-on-error: true
       with:
-        smtp-server: smtp.hostinger.com
-        smtp-port: 465
-        smtp-secure: true
+        smtp-server: ${{ inputs.smtp_server }}
+        smtp-port: ${{ inputs.smtp_port }}
+        smtp-secure: ${{ inputs.smtp_secure }}
         username: ${{ inputs.smtp_username }}
         password: ${{ inputs.smtp_password }}
         from-email: "VK Paints CI <${{ inputs.mail_from || inputs.smtp_username }}>"
