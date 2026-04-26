@@ -9,18 +9,12 @@ on:
         type: string
     secrets:
       ORG_GH_TOKEN:
-        description: 'GitHub PAT with repo permissions for updating Helm charts'
-        required: true
-      SMTP_USERNAME:
-        required: true
-      SMTP_PASSWORD:
-        required: true
-      SLACK_WEBHOOK:
-        required: true
+        description: 'GitHub PAT'
+        required: false
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/vkpaints_${{ inputs.service_name }}
+  IMAGE_NAME: ${{ github.repository_owner }}/vkpaints-${{ inputs.service_name }}
 
 jobs:
   build-and-push-release:
@@ -46,6 +40,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # This automatically creates a tag based on the GitHub release tag (e.g., v1.0.0)
           tags: |
             type=semver,pattern={{version}}
 
@@ -56,92 +51,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Export Release Tag
-        id: export_tag
-        run: |
-          # Extract the tag (e.g., v1.0.0) from the github ref
-          echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-
-  update-helm:
-    name: Update Helm Chart (Prod & Dev Values)
-    needs: build-and-push-release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Helm Chart Repo
-        uses: actions/checkout@v4
-        with:
-          repository: VK-Paints/vkpaints-helm-charts
-          token: ${{ secrets.ORG_GH_TOKEN }}
-          path: helm-repo
-          ref: main
-
-      - name: Update values-prod.yaml and values-dev.yaml
-        run: |
-          cd helm-repo
-          RELEASE_TAG=${GITHUB_REF#refs/tags/}
-          
-          # Update PROD values
-          yq -i '.image.tag = "'$RELEASE_TAG'"' charts/${{ inputs.service_name }}/values-prod.yaml
-          
-          # Update DEV values (as requested)
-          yq -i '.image.tag = "'$RELEASE_TAG'"' charts/${{ inputs.service_name }}/values-dev.yaml
-          
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
-          git add charts/${{ inputs.service_name }}/values-prod.yaml charts/${{ inputs.service_name }}/values-dev.yaml
-          git commit -m "Release: Update ${{ inputs.service_name }} images to $RELEASE_TAG" || echo "No changes to commit"
-          git push
-
-  notify-result:
-    name: Send Notification
-    needs: [build-and-push-release, update-helm]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Determine Failure Reason and Author
-        id: info
-        run: |
-          # Get actual commit author email
-          echo "email=$(git log -1 --pretty=format:'%ae')" >> $GITHUB_OUTPUT
-
-          if [ "${{ needs.build-and-push-release.result }}" == "failure" ]; then
-            echo "msg=Production Image Build failed! Check the logs for compilation or Docker errors." >> $GITHUB_OUTPUT
-            echo "url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_OUTPUT
-          elif [ "${{ needs.update-helm.result }}" == "failure" ]; then
-            echo "msg=ArgoCD Production release failed! Could not update the Helm charts for Prod/Dev environments." >> $GITHUB_OUTPUT
-            echo "url=${{ github.server_url }}/VK-Paints/vkpaints-helm-charts" >> $GITHUB_OUTPUT
-          else
-            echo "msg=Production Release successful! Version pushed to GHCR and all environments updated." >> $GITHUB_OUTPUT
-            echo "url=${{ github.server_url }}/${{ github.repository }}/releases" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Checkout Workflow Repo
-        uses: actions/checkout@v4
-        with:
-          repository: VK-Paints/vkpaints-workflow
-          token: ${{ secrets.ORG_GH_TOKEN }}
-          ref: main
-
-      - name: Send Notification
-        uses: ./.github/actions/notify
-        with:
-          status: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 'failure' || 'success' }}
-          pipeline_name: 'Production Release Build & Deploy'
-          repository_name: ${{ github.repository }}
-          reason_or_message: ${{ steps.info.outputs.msg }}
-          author: ${{ github.actor }}
-          smtp_username: ${{ secrets.SMTP_USERNAME }}
-          smtp_password: ${{ secrets.SMTP_PASSWORD }}
-          smtp_server: ${{ vars.SMTP_SERVER }}
-          smtp_port: ${{ vars.SMTP_PORT }}
-          mail_from: ${{ vars.MAIL_FROM }}
-          mail_to: ${{ steps.info.outputs.email }}
-          slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
-          workflow_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
-          report_url: ${{ steps.info.outputs.url }}

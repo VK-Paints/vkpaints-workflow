@@ -30,15 +30,14 @@ jobs:
           fetch-depth: 0
 
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@master
+        uses: sonarsource/sonarcloud-github-action@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
         with:
           args: >
-            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
-            -Dsonar.token=${{ secrets.SONAR_TOKEN }}
+            -Dsonar.projectKey=VK-Paints_${{ inputs.service_name }}
+            -Dsonar.organization=vk-paints
 
   snyk-scan:
     name: Snyk Vulnerability Scan
@@ -63,58 +62,48 @@ jobs:
         with:
           args: --severity-threshold=high
 
-  notify-result:
-    name: Send Notification
-    needs: [sonar-scan, snyk-scan]
-    if: always()
+  docker-build-test:
+    name: Docker Build Validation
+    needs: snyk-scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Test Docker Build
+        uses: docker/build-push-action@v5
         with:
-          fetch-depth: 0
+          context: .
+          push: false # We only want to test if it builds, NOT push to registry
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Determine Failure Reason and Author
-        id: info
-        run: |
-          # Get actual commit author email
-          echo "email=$(git log -1 --pretty=format:'%ae')" >> $GITHUB_OUTPUT
-          
-          if [ "${{ needs.sonar-scan.result }}" == "failure" ]; then
-            echo "msg=SonarQube Quality Gate failed! Review code smells or vulnerabilities." >> $GITHUB_OUTPUT
-            echo "url=${{ vars.SONAR_HOST_URL }}/dashboard?id=${{ vars.SONAR_PROJECT_KEY }}" >> $GITHUB_OUTPUT
-          elif [ "${{ needs.snyk-scan.result }}" == "failure" ]; then
-            echo "msg=Snyk Security Scan found high-severity vulnerabilities in dependencies." >> $GITHUB_OUTPUT
-            echo "url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_OUTPUT
-          elif [ "${{ contains(needs.*.result, 'failure') }} " == "true" ]; then
-            echo "msg=Pipeline failed during the scanning phase (possible secret or setup error)." >> $GITHUB_OUTPUT
-            echo "url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_OUTPUT
-          else
-            echo "msg=All scans passed! SonarQube and Snyk are green." >> $GITHUB_OUTPUT
-            echo "url=${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-          fi
-
+  notify-result:
+    name: Send Notification
+    needs: [sonar-scan, snyk-scan, docker-build-test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
       - name: Checkout Workflow Repo (for action access)
         uses: actions/checkout@v4
         with:
           repository: VK-Paints/vkpaints-workflow
-          token: ${{ secrets.ORG_GH_TOKEN }}
-          ref: main
 
       - name: Send Notification
         uses: ./.github/actions/notify
         with:
           status: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 'failure' || 'success' }}
-          pipeline_name: 'PR Scans (Sonar & Snyk)'
+          pipeline_name: 'PR Scans (Sonar, Snyk & Docker)'
           repository_name: ${{ github.repository }}
-          reason_or_message: ${{ steps.info.outputs.msg }}
+          reason_or_message: 'Results: Sonar [${{ needs.sonar-scan.result }}], Snyk [${{ needs.snyk-scan.result }}], Docker [${{ needs.docker-build-test.result }}]'
           author: ${{ github.actor }}
           smtp_username: ${{ secrets.SMTP_USERNAME }}
           smtp_password: ${{ secrets.SMTP_PASSWORD }}
-          smtp_server: ${{ vars.SMTP_SERVER }}
-          smtp_port: ${{ vars.SMTP_PORT }}
-          mail_from: ${{ vars.MAIL_FROM }}
-          mail_to: ${{ steps.info.outputs.email }}
+          mail_from: 'actions@vkpaints.com'
+          mail_to: ${{ github.actor }}@users.noreply.github.com
           slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
           workflow_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
-          report_url: ${{ steps.info.outputs.url }}
+          report_url: '${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.pull_request.number }}'

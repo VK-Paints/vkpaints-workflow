@@ -96,10 +96,9 @@ jobs:
       - name: Checkout Helm Chart Repo
         uses: actions/checkout@v4
         with:
-          repository: VK-Paints/vkpaints-helm-charts
+          repository: VK-Paints/vkpaints-helm-chart
           token: ${{ secrets.ORG_GH_TOKEN }}
           path: helm-repo
-          ref: main
 
       - name: Update values-dev.yaml
         run: |
@@ -120,34 +119,10 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Determine Failure Reason and Author
-        id: info
-        run: |
-          # Get actual commit author email
-          echo "email=$(git log -1 --pretty=format:'%ae')" >> $GITHUB_OUTPUT
-
-          if [ "${{ needs.build-scan-push.result }}" == "failure" ]; then
-            echo "msg=Docker Build or Trivy Security Scan failed! Check for code errors or image vulnerabilities." >> $GITHUB_OUTPUT
-            echo "url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_OUTPUT
-          elif [ "${{ needs.update-helm.result }}" == "failure" ]; then
-            echo "msg=ArgoCD Helm update failed! Could not push the new image tag to the charts repository." >> $GITHUB_OUTPUT
-            echo "url=${{ github.server_url }}/VK-Paints/vkpaints-helm-charts" >> $GITHUB_OUTPUT
-          else
-            echo "msg=Dev Build and Deploy successful! Image pushed to GHCR and Helm chart updated." >> $GITHUB_OUTPUT
-            echo "url=${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}" >> $GITHUB_OUTPUT
-          fi
-
       - name: Checkout Workflow Repo (for action access)
         uses: actions/checkout@v4
         with:
           repository: VK-Paints/vkpaints-workflow
-          token: ${{ secrets.ORG_GH_TOKEN }}
-          ref: main
 
       - name: Send Notification
         uses: ./.github/actions/notify
@@ -155,14 +130,12 @@ jobs:
           status: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 'failure' || 'success' }}
           pipeline_name: 'Dev Build, Scan, & Deploy'
           repository_name: ${{ github.repository }}
-          reason_or_message: ${{ steps.info.outputs.msg }}
+          reason_or_message: 'Results: Build/Scan [${{ needs.build-scan-push.result }}], Helm Update [${{ needs.update-helm.result }}]'
           author: ${{ github.actor }}
           smtp_username: ${{ secrets.SMTP_USERNAME }}
           smtp_password: ${{ secrets.SMTP_PASSWORD }}
-          smtp_server: ${{ vars.SMTP_SERVER }}
-          smtp_port: ${{ vars.SMTP_PORT }}
-          mail_from: ${{ vars.MAIL_FROM }}
-          mail_to: ${{ steps.info.outputs.email }}
+          mail_from: 'actions@vkpaints.com'
+          mail_to: ${{ github.actor }}@users.noreply.github.com
           slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
           workflow_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
-          report_url: ${{ steps.info.outputs.url }}
+          report_url: '${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}'
