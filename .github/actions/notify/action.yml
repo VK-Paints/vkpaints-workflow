@@ -56,7 +56,7 @@ runs:
         smtp-secure: true
         username: ${{ inputs.smtp_username }}
         password: ${{ inputs.smtp_password }}
-        from-email: "VK Paints CI <${{ inputs.mail_from }}>"
+        from-email: "VK Paints CI <${{ inputs.mail_from || inputs.smtp_username }}>"
         to-email: ${{ inputs.mail_to }}
         subject: ${{ env.SUBJECT }}
         html: |
