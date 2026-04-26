@@ -134,7 +134,7 @@ jobs:
           author: ${{ github.actor }}
           smtp_username: ${{ secrets.SMTP_USERNAME }}
           smtp_password: ${{ secrets.SMTP_PASSWORD }}
-          mail_from: 'actions@vkpaints.com'
+          mail_from: ${{ vars.MAIL_FROM }}
           mail_to: ${{ github.actor }}@users.noreply.github.com
           slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
           workflow_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
