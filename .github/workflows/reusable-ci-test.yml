@@ -146,17 +146,32 @@ jobs:
           repository: VK-Paints/vkpaints-helm-charts
           token: ${{ secrets.ORG_GH_TOKEN }}
           ref: main
+          path: helm-repo
+
+      - name: Validate Values File
+        working-directory: helm-repo
+        run: |
+          test -f "charts/${{ inputs.service_name }}/values-dev.yaml"
 
       - name: Update Image Tag
+        working-directory: helm-repo
+        env:
+          NEW_TAG: ${{ github.sha }}
         run: |
-          # Use yq to update the tag in values-dev.yaml
-          yq -i '.image.tag = "${{ github.sha }}"' charts/${{ inputs.service_name }}/values-dev.yaml
+          yq -i '.image.tag = strenv(NEW_TAG)' "charts/${{ inputs.service_name }}/values-dev.yaml"
+          echo "Updated values-dev.yaml:"
+          cat "charts/${{ inputs.service_name }}/values-dev.yaml"
 
       - name: Commit and Push
+        working-directory: helm-repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .
+          git add "charts/${{ inputs.service_name }}/values-dev.yaml"
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
           git commit -m "chore: update ${{ inputs.service_name }} image tag to ${{ github.sha }}"
           git push origin main
 

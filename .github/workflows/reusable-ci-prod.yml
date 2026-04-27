@@ -146,18 +146,32 @@ jobs:
           repository: VK-Paints/vkpaints-helm-charts
           token: ${{ secrets.ORG_GH_TOKEN }}
           ref: main
+          path: helm-repo
+
+      - name: Validate Values File
+        working-directory: helm-repo
+        run: |
+          test -f "charts/${{ inputs.service_name }}/values-prod.yaml"
 
       - name: Update Image Tag
+        working-directory: helm-repo
+        env:
+          NEW_TAG: ${{ github.ref_name }}
         run: |
-          # Use yq to update the tag in values-prod.yaml
-          # For Prod, we use the git tag/ref_name as the image version
-          yq -i '.image.tag = "${{ github.ref_name }}"' charts/${{ inputs.service_name }}/values-prod.yaml
+          yq -i '.image.tag = strenv(NEW_TAG)' "charts/${{ inputs.service_name }}/values-prod.yaml"
+          echo "Updated values-prod.yaml:"
+          cat "charts/${{ inputs.service_name }}/values-prod.yaml"
 
       - name: Commit and Push
+        working-directory: helm-repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .
+          git add "charts/${{ inputs.service_name }}/values-prod.yaml"
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
           git commit -m "chore(prod): update ${{ inputs.service_name }} image tag to ${{ github.ref_name }}"
           git push origin main
 
