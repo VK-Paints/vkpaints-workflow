@@ -136,6 +136,31 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  update-helm:
+    name: Update Helm Manifest
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Helm Repo
+        uses: actions/checkout@v4
+        with:
+          repository: VK-Paints/vkpaints-helm-charts
+          token: ${{ secrets.GITHUB_TOKEN }} # Use a PAT if this is a cross-repo push
+          ref: main
+
+      - name: Update Image Tag
+        run: |
+          # Use yq to update the tag in values-dev.yaml
+          yq -i '.image.tag = "${{ github.sha }}"' charts/${{ inputs.service_name }}/values-dev.yaml
+
+      - name: Commit and Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "chore: update ${{ inputs.service_name }} image tag to ${{ github.sha }}"
+          git push origin main
+
   notify:
     name: Notify Result
     needs: [quality-gates, build-and-push]
