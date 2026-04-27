@@ -1,0 +1,68 @@
+name: Reusable CD Workflow (GitOps)
+
+on:
+  workflow_call:
+    inputs:
+      service_name:
+        required: true
+        type: string
+        description: "Name of the microservice (e.g., user-service)"
+      environment:
+        required: true
+        type: string
+        description: "Environment to update (dev or prod)"
+      image_repository:
+        required: true
+        type: string
+        description: "Repository of the image (e.g., ghcr.io/vk-paints/vkpaints-user-service)"
+      tag:
+        required: false
+        type: string
+        description: "Image tag. If empty, uses 7-char sha for dev, and tag name for prod"
+    secrets:
+      HELM_REPO_PAT:
+        required: true
+        description: "Personal Access Token with push access to the helm charts repository"
+
+jobs:
+  update-helm-values:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine Target Tag
+        id: vars
+        run: |
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            echo "TAG=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ inputs.environment }}" == "dev" ]]; then
+            # Dev uses short SHA
+            echo "TAG=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          else
+            # Prod uses GitHub tag name (vX.Y.Z)
+            echo "TAG=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout Helm Charts Repository
+        uses: actions/checkout@v4
+        with:
+          repository: VK-Paints/vkpaints-helm-charts
+          token: ${{ secrets.HELM_REPO_PAT }}
+          path: helm-repo
+
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@v4
+        with:
+          repository: VK-Paints/vkpaints-workflow
+          path: workflow-repo
+
+      - name: Set up yq
+        uses: mikefarah/yq@master
+
+      - name: Update Helm Values and Push
+        run: |
+          chmod +x ../workflow-repo/scripts/update-helm-values.sh
+          ../workflow-repo/scripts/update-helm-values.sh \
+            "${{ inputs.environment }}" \
+            "${{ inputs.service_name }}" \
+            "${{ inputs.image_repository }}" \
+            "${{ steps.vars.outputs.TAG }}"
+        working-directory: helm-repo
