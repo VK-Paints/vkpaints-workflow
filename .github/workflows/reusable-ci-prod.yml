@@ -15,6 +15,14 @@ on:
       mail_from:
         required: true
         type: string
+      publish:
+        required: false
+        type: boolean
+        default: false
+      image_tag:
+        required: false
+        type: string
+        default: latest
     secrets:
       SONAR_TOKEN:
         required: true
@@ -127,17 +135,19 @@ jobs:
           fi
 
       - name: Build and Push to GHCR
+        if: inputs.publish
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ steps.registry_case.outputs.OWNER_LC }}/vkpaints-${{ inputs.service_name }}:latest
+          tags: ghcr.io/${{ steps.registry_case.outputs.OWNER_LC }}/vkpaints-${{ inputs.service_name }}:${{ inputs.image_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   update-helm:
     name: Update Helm Manifest
     needs: build-and-push
+    if: inputs.publish
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Helm Repo
@@ -156,7 +166,7 @@ jobs:
       - name: Update Image Tag
         working-directory: helm-repo
         env:
-          NEW_TAG: latest
+          NEW_TAG: ${{ inputs.image_tag }}
         run: |
           yq -i '.image.tag = strenv(NEW_TAG)' "charts/${{ inputs.service_name }}/values-prod.yaml"
           echo "Updated values-prod.yaml:"
@@ -172,7 +182,7 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "chore(prod): update ${{ inputs.service_name }} image tag to latest"
+          git commit -m "chore(prod): update ${{ inputs.service_name }} image tag to ${{ inputs.image_tag }}"
           git push origin main
 
   notify:
