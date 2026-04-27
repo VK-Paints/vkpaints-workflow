@@ -158,7 +158,7 @@ jobs:
       - name: Update Image Tag
         working-directory: helm-repo
         env:
-          NEW_TAG: ${{ github.sha }}
+          NEW_TAG: latest
         run: |
           yq -i '.image.tag = strenv(NEW_TAG)' "charts/${{ inputs.service_name }}/values-dev.yaml"
           echo "Updated values-dev.yaml:"
@@ -174,7 +174,7 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "chore: update ${{ inputs.service_name }} image tag to ${{ github.sha }}"
+          git commit -m "chore: update ${{ inputs.service_name }} image tag to latest"
           git push origin main
 
   notify:
