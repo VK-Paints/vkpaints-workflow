@@ -131,7 +131,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ steps.registry_case.outputs.OWNER_LC }}/vkpaints-${{ inputs.service_name }}:latest
+          tags: |
+            ghcr.io/${{ steps.registry_case.outputs.OWNER_LC }}/vkpaints-${{ inputs.service_name }}:latest
+            ghcr.io/${{ steps.registry_case.outputs.OWNER_LC }}/vkpaints-${{ inputs.service_name }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
