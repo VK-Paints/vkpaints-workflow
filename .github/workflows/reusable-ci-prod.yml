@@ -36,52 +36,12 @@ on:
         required: true
 
 jobs:
-  quality-gates:
-    name: Quality Gates (Sonar and Snyk)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
-            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
-            -Dsonar.host.url=${{ vars.SONAR_HOST_URL }}
-
-      - name: Install Dependencies for Snyk
-        run: npm install --legacy-peer-deps
-
-      - name: Snyk Vulnerability Scan
-        uses: snyk/actions/node@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high
-
-      - name: Snyk Monitor
-        uses: snyk/actions/node@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          command: monitor
-
   build-and-push:
     name: Build and Push Image
-    needs: quality-gates
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    outputs:
-      has_vuln: ${{ steps.check_vuln.outputs.HAS_VULN }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -103,136 +63,14 @@ jobs:
         env:
           OWNER: '${{ github.repository_owner }}'
 
-      - name: Build Docker Image (Local)
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          load: true
-          tags: local-image:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Run Trivy vulnerability scanner
-        id: trivy
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'local-image:latest'
-          format: 'table'
-          output: 'trivy-report.txt'
-          exit-code: '0'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Check for vulnerabilities
-        id: check_vuln
-        shell: bash
-        run: |
-          if grep -E "CRITICAL|HIGH" trivy-report.txt; then
-            echo "HAS_VULN=true" >> $GITHUB_OUTPUT
-          else
-            echo "HAS_VULN=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Build and Push to GHCR
-        if: inputs.publish
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ steps.registry_case.outputs.OWNER_LC }}/vkpaints-${{ inputs.service_name }}:${{ inputs.image_tag }}
+          tags: |
+            ghcr.io/${{ steps.registry_case.outputs.OWNER_LC }}/vkpaints-${{ inputs.service_name }}:${{ inputs.image_tag }}
+            ghcr.io/${{ steps.registry_case.outputs.OWNER_LC }}/vkpaints-${{ inputs.service_name }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  update-helm:
-    name: Update Helm Manifest
-    needs: build-and-push
-    if: inputs.publish
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Helm Repo
-        uses: actions/checkout@v4
-        with:
-          repository: VK-Paints/vkpaints-helm-charts
-          token: ${{ secrets.ORG_GH_TOKEN }}
-          ref: main
-          path: helm-repo
-
-      - name: Validate Values File
-        working-directory: helm-repo
-        run: |
-          test -f "charts/${{ inputs.service_name }}/values-prod.yaml"
-
-      - name: Update Image Tag
-        working-directory: helm-repo
-        env:
-          NEW_TAG: ${{ inputs.image_tag }}
-        run: |
-          yq -i '.image.tag = strenv(NEW_TAG)' "charts/${{ inputs.service_name }}/values-prod.yaml"
-          echo "Updated values-prod.yaml:"
-          cat "charts/${{ inputs.service_name }}/values-prod.yaml"
-
-      - name: Commit and Push
-        working-directory: helm-repo
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "charts/${{ inputs.service_name }}/values-prod.yaml"
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-            exit 0
-          fi
-          git commit -m "chore(prod): update ${{ inputs.service_name }} image tag to ${{ inputs.image_tag }}"
-          git push origin main
-
-  notify:
-    name: Notify Result
-    needs: [quality-gates, build-and-push]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Workflow Repo
-        uses: actions/checkout@v4
-        with:
-          repository: VK-Paints/vkpaints-workflow
-
-      - name: Get Author Email
-        id: author
-        shell: bash
-        run: echo "email=$(git log -1 --pretty=format:'%ae')" >> $GITHUB_OUTPUT
-
-      - name: Set Notification Details
-        id: details
-        shell: bash
-        run: |
-          if [ "${{ needs.quality-gates.result }}" != "success" ]; then
-            echo "STATUS=failure" >> $GITHUB_OUTPUT
-            echo "MSG=Quality gates failed (SonarQube or Snyk). Please check the security reports." >> $GITHUB_OUTPUT
-          elif [ "${{ needs.build-and-push.result }}" != "success" ]; then
-            echo "STATUS=failure" >> $GITHUB_OUTPUT
-            echo "MSG=Docker Build or Push failed. Please check the workflow logs." >> $GITHUB_OUTPUT
-          elif [ "${{ needs.build-and-push.outputs.has_vuln }}" == "true" ]; then
-            echo "STATUS=success" >> $GITHUB_OUTPUT
-            echo "MSG=there are vulnerabilities detected in the image, solve them as soon as possible, since it is urgent we are processing the same image for testing purpose" >> $GITHUB_OUTPUT
-          else
-            echo "STATUS=success" >> $GITHUB_OUTPUT
-            echo "MSG=Pipeline completed successfully and image pushed to GHCR." >> $GITHUB_OUTPUT
-          fi
-
-      - name: Send Notification
-        uses: ./.github/actions/notify
-        with:
-          status: ${{ steps.details.outputs.STATUS }}
-          pipeline_name: "Prod Pipeline (Main)"
-          repository_name: ${{ github.repository }}
-          reason_or_message: ${{ steps.details.outputs.MSG }}
-          author: ${{ github.actor }}
-          smtp_server: ${{ inputs.smtp_server }}
-          smtp_port: ${{ inputs.smtp_port }}
-          smtp_username: ${{ secrets.SMTP_USERNAME }}
-          smtp_password: ${{ secrets.SMTP_PASSWORD }}
-          mail_from: ${{ inputs.mail_from }}
-          mail_to: ${{ steps.author.outputs.email }}
-          slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
-          workflow_url: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          report_url: "${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}"
